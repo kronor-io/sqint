@@ -45,6 +45,10 @@
                     tag = "18.0.0";
                     hash = "sha256-Fs9SFs8ramKYdkv1gEOMJd9SnLmKDcbf+zYKv1hHBfc=";
                   };
+                  # The dylib's install name is its bare file name, which
+                  # dyld cannot find at run time.
+                  nativeBuildInputs = (old.nativeBuildInputs or [ ])
+                    ++ prev.lib.optional prev.stdenv.isDarwin prev.fixDarwinDylibNames;
                   # pg_query.h includes postgres_deparse.h, which nixpkgs
                   # does not install. The library is built under its bare
                   # name but records a versioned soname/install name, which

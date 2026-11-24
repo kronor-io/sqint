@@ -1,6 +1,6 @@
 cabal-version: 3.4
 name:          sqint
-version:       0.1.0.1
+version:       0.1.0.2
 synopsis:
   Lint sqitch migrations for PostgreSQL lock and rewrite hazards
 
@@ -93,7 +93,7 @@ library
     , proto-lens          >=0.7 && <0.8
     , rio                 >=0.1.22 && <0.2
     , sqitch-plan         ^>=0.1
-    , string-interpolate  >=1.0 && <1.1
+    , string-interpolate  >=0.3.4 && <1.1
     , text                >=2.1 && <2.2
     , vector              >=0.13 && <0.14
 
