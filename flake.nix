@@ -14,11 +14,9 @@
     haskell-nix.inputs.nixpkgs.follows = "nixpkgs";
     hackage-nix.url = "github:kronor-io/hackage.nix";
     hackage-nix.flake = false;
-    kronor-haskell-packages.url = "github:kronor-io/kronor-haskell-packages/repo";
-    kronor-haskell-packages.flake = false;
   };
 
-  outputs = { self, haskell-nix, hackage-nix, kronor-haskell-packages, nixpkgs }:
+  outputs = { self, haskell-nix, hackage-nix, nixpkgs }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" ];
       forAllSystems = nixpkgs.lib.genAttrs systems;
@@ -35,27 +33,32 @@
             overlays = [
               (final: _: { postgresql = final.postgresql_18; })
               haskellNix.overlay
-              # pg-query was generated against libpg_query 16's
-              # protobuf schema; 17 renumbered fields, so a newer library
-              # decodes statements into the wrong AST nodes.
+              # libpg-query's generated protobuf modules match libpg_query
+              # 18; each major renumbers the AST's node types, so another
+              # version decodes statements into the wrong nodes.
               (_: prev: {
                 libpg_query = prev.libpg_query.overrideAttrs (old: {
-                  version = "16-5.2.0";
+                  version = "18.0.0";
                   src = prev.fetchFromGitHub {
                     owner = "pganalyze";
                     repo = "libpg_query";
-                    tag = "16-5.2.0";
-                    hash = "sha256-UziczfuJ0d6tYi87EC/HDDC5nbe3YMliLFZBTaYucj0=";
+                    tag = "18.0.0";
+                    hash = "sha256-Fs9SFs8ramKYdkv1gEOMJd9SnLmKDcbf+zYKv1hHBfc=";
                   };
-                  # The library's install name is its bare file name, which
-                  # dyld cannot find at run time.
-                  nativeBuildInputs = (old.nativeBuildInputs or [ ])
-                    ++ prev.lib.optional prev.stdenv.isDarwin prev.fixDarwinDylibNames;
-                  # The library's soname is libpg_query.so.1605.1, but nixpkgs
-                  # installs it as libpg_query.so alone, so nothing linked
-                  # against it finds it at run time.
-                  postInstall = (old.postInstall or "") + prev.lib.optionalString prev.stdenv.isLinux ''
-                    ln -s libpg_query.so $out/lib/libpg_query.so.1605.1
+                  # pg_query.h includes postgres_deparse.h, which nixpkgs
+                  # does not install. The library is built under its bare
+                  # name but records a versioned soname/install name, which
+                  # nothing provides; make names both.
+                  postInstall = (old.postInstall or "") + ''
+                    install -Dm644 postgres_deparse.h -t "$out/include"
+                    names=$(make -s --eval='__pg_query_names: ; @echo $(SONAME) $(SOLIBVER) $(SOLIB)' __pg_query_names)
+                    set -- $names
+                    soname=$1
+                    solibver=$2
+                    solib=$3
+                    cd "$out/lib"
+                    [ "$soname" = "$solib" ] || ln -s "$solib" "$soname"
+                    [ "$solibver" = "$solib" ] || [ "$solibver" = "$soname" ] || ln -s "$solib" "$solibver"
                   '';
                 });
               })
@@ -66,9 +69,6 @@
           project = pkgs.haskell-nix.project {
             src = ./.;
             compiler-nix-name = "ghc9124";
-            inputMap = {
-              "https://kronor-io.github.io/kronor-haskell-packages" = kronor-haskell-packages;
-            };
             modules = [{
               packages.sqint.components.exes.sqint.build-tools = [ pkgs.installShellFiles ];
               packages.sqint.components.exes.sqint.postInstall = ''

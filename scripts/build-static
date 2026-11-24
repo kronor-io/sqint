@@ -34,10 +34,10 @@ trap 'chown -R "$(stat -c %u:%g .)" "$out"' EXIT
 # libpq.a and what it links: OpenSSL, as libpq.pc's static libraries name.
 apk add --no-cache libpq-dev openssl-libs-static binutils tar xz curl make
 
-# libpg_query 16, which pg-query was generated against (flake.nix), as
+# libpg_query 18, which libpg-query was generated against (flake.nix), as
 # a static library. Alpine packages none, so it is built from the release.
-libpg_query_version=16-5.2.0
-libpg_query_sha256=92bbc9a628655df3de86db51de97446d8ed18b5d23b17039809364d5bc6a4a38
+libpg_query_version=18.0.0
+libpg_query_sha256=6ad7783f272acfd116455c66a03298a0cac9a9168281df547969219112f0260f
 libpg_query="$out/libpg_query-$libpg_query_version"
 if [ ! -e "$libpg_query/libpg_query.a" ]; then
     rm -rf "$libpg_query"
@@ -60,6 +60,7 @@ comm -12 \
 objcopy --redefine-syms="$out/libpg_query.redefine" \
     "$libpg_query/libpg_query.a" /usr/local/lib/libpg_query.a
 cp "$libpg_query/pg_query.h" /usr/local/include/pg_query.h
+cp "$libpg_query/postgres_deparse.h" /usr/local/include/postgres_deparse.h
 
 # postgresql-libpq records the libraries pkg-config gives it, and the final link
 # names them right after -lpq. Plain pkg-config gives -lpq alone; libpq.a also

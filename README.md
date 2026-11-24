@@ -394,7 +394,7 @@ With `--format json`, sqint prints one array of findings for tools:
 
 - The static pass knows nothing about the database: not which columns are indexed, how big a table is, or which type changes are free. It errs towards reporting; the dynamic pass and `lint:ignore` settle the rest.
 - Index rules look at the statements of PL/pgSQL bodies but not inside `language sql` bodies, `perform` or dynamic SQL run with `execute`. Only a cast or call directly on the compared column is reported, not one nested deeper in an expression.
-- libpg_query parses PostgreSQL 16's grammar, so syntax newer than that is reported as `setup/unparsable-sql`.
+- libpg_query parses PostgreSQL 18's grammar, so syntax newer than that is reported as `setup/unparsable-sql`.
 - The dynamic pass deploys with sqitch and checks locks one statement at a time, inside a transaction it rolls back; it says nothing about how long a statement takes on production data.
 
 ## Tests

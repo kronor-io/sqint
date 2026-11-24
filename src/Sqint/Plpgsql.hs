@@ -26,6 +26,7 @@
 module Sqint.Plpgsql (
     EmbeddedSql (..),
     extractEmbeddedSql,
+    decodePlpgsqlJson,
 ) where
 
 import Data.Aeson qualified as Aeson
@@ -108,9 +109,21 @@ embeddedFromFunction src raw = do
     case parsed of
         Left _ -> pure []
         Right json ->
-            case Aeson.decodeStrict (TE.encodeUtf8 json) of
+            case decodePlpgsqlJson json of
                 Nothing -> pure []
                 Just value -> pure (walkJson bodyStartLine value [])
+
+
+-- | Decode what 'Pg.parsePlpgsql' returns. libpg_query 18.0.0 and 18.1.0
+-- write each of a trigger function's implicit variables (@TG_OP@ and the
+-- rest) into @datums@ as @{}}@, which is not JSON, so every trigger body
+-- would decode to nothing; pganalyze/libpg_query#384 fixes it after 18.1.0.
+-- @[{}}@ and @,{}}@ cannot occur in valid JSON outside a string, so when
+-- the first decode fails, those become @[{}@ and @,{}@ and it is tried again.
+decodePlpgsqlJson :: Text -> Maybe Aeson.Value
+decodePlpgsqlJson json =
+    Aeson.decodeStrict (TE.encodeUtf8 json)
+        <|> Aeson.decodeStrict (TE.encodeUtf8 (T.replace "[{}}" "[{}" (T.replace ",{}}" ",{}" json)))
 
 
 -- | Slice a @RawStmt@'s substring out of the outer source. A

@@ -77,23 +77,6 @@
         "type": "github"
       }
     },
-    "kronor-haskell-packages": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1789064140,
-        "narHash": "sha256-YMj8azB4kSFDSK7QkF96qjZt9gu540nUuCX05IOGRfs=",
-        "owner": "kronor-io",
-        "repo": "kronor-haskell-packages",
-        "rev": "195c7a047ede6e28504eb6676a68ce7bcef8bb3e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "kronor-io",
-        "ref": "repo",
-        "repo": "kronor-haskell-packages",
-        "type": "github"
-      }
-    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1791353474,
@@ -130,7 +113,6 @@
       "inputs": {
         "hackage-nix": "hackage-nix",
         "haskell-nix": "haskell-nix",
-        "kronor-haskell-packages": "kronor-haskell-packages",
         "nixpkgs": "nixpkgs"
       }
     }

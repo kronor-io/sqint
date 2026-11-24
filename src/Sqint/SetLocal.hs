@@ -13,10 +13,10 @@ import Data.Aeson.KeyMap qualified as KeyMap
 import Data.Char (isSpace)
 import Data.String.Interpolate (iii)
 import Data.Text qualified as T
-import Data.Text.Encoding qualified as TE
 import PgQuery qualified as Pg
 import RIO
 import Sqint.Diagnostic (Finding (..), Severity (..), SourceRange (..))
+import Sqint.Plpgsql (decodePlpgsqlJson)
 import Sqint.Rule (Rule (..))
 
 
@@ -80,7 +80,7 @@ analyse path src raw isDo = do
     case parsed of
         Left _ -> pure []
         Right json ->
-            case Aeson.decodeStrict (TE.encodeUtf8 json) of
+            case decodePlpgsqlJson json of
                 Nothing -> pure []
                 Just value -> do
                     let locals = collectLocalSets value []

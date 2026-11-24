@@ -10,7 +10,6 @@ module Sqint.Deploy.Observer (
     PidLock (..),
 ) where
 
-import Data.Vector (Vector)
 import Data.Vector qualified as Vector
 import Hasql.Decoders qualified as Decoders
 import Hasql.Encoders qualified as Encoders

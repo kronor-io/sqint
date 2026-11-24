@@ -45,11 +45,9 @@ module Sqint.Deploy.PlanCheck (
 
 import Data.Aeson qualified as Aeson
 import Data.Char (isDigit)
-import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
 import Data.Monoid (Any (..))
 import Data.ProtoLens (defMessage)
-import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.String.Interpolate (iii)
 import Data.Text qualified as T
@@ -249,7 +247,7 @@ descendUpdate f u =
         <$> f (u ^. Pg.whereClause)
         <*> traverse f (u ^.. Pg.targetList . traverse)
         <*> traverse f (u ^.. Pg.fromClause . traverse)
-        <*> traverse f (u ^.. Pg.returningList . traverse)
+        <*> traverse f (u ^.. Pg.maybe'returningClause . traverse . Pg.exprs . traverse)
   where
     update w t fr r =
         u
@@ -259,7 +257,9 @@ descendUpdate f u =
             .~ t
                 & Pg.fromClause
             .~ fr
-                & Pg.returningList
+                & Pg.maybe'returningClause
+                . traverse
+                . Pg.exprs
             .~ r
 
 
@@ -268,7 +268,7 @@ descendDelete f d =
     update
         <$> f (d ^. Pg.whereClause)
         <*> traverse f (d ^.. Pg.usingClause . traverse)
-        <*> traverse f (d ^.. Pg.returningList . traverse)
+        <*> traverse f (d ^.. Pg.maybe'returningClause . traverse . Pg.exprs . traverse)
   where
     update w using r =
         d
@@ -276,7 +276,9 @@ descendDelete f d =
             .~ w
                 & Pg.usingClause
             .~ using
-                & Pg.returningList
+                & Pg.maybe'returningClause
+                . traverse
+                . Pg.exprs
             .~ r
 
 
@@ -284,9 +286,9 @@ descendInsert :: Applicative f => (Pg.Node -> f Pg.Node) -> Pg.InsertStmt -> f P
 descendInsert f i =
     update
         <$> f (i ^. Pg.selectStmt)
-        <*> traverse f (i ^.. Pg.returningList . traverse)
+        <*> traverse f (i ^.. Pg.maybe'returningClause . traverse . Pg.exprs . traverse)
   where
-    update sel r = i & Pg.selectStmt .~ sel & Pg.returningList .~ r
+    update sel r = i & Pg.selectStmt .~ sel & Pg.maybe'returningClause . traverse . Pg.exprs .~ r
 
 
 descendAExpr :: Applicative f => (Pg.Node -> f Pg.Node) -> Pg.A_Expr -> f Pg.A_Expr
