@@ -1,0 +1,140 @@
+{
+  "nodes": {
+    "flake-compat": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1672831974,
+        "narHash": "sha256-z9k3MfslLjWQfnjBtEtJZdq3H7kyi2kQtUThfTgdRk0=",
+        "owner": "input-output-hk",
+        "repo": "flake-compat",
+        "rev": "45f2638735f8cdc40fe302742b79f248d23eb368",
+        "type": "github"
+      },
+      "original": {
+        "owner": "input-output-hk",
+        "ref": "hkm/gitlab-fix",
+        "repo": "flake-compat",
+        "type": "github"
+      }
+    },
+    "hackage-db": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1711997811,
+        "narHash": "sha256-8NTfSb1fE/so843qG59XpvPE2HIYTa0D1UrpnHdJ44U=",
+        "owner": "michaelpj",
+        "repo": "hackage-db",
+        "rev": "83f819cb08742d3c86a83b407d45c1f6c1c7e299",
+        "type": "github"
+      },
+      "original": {
+        "owner": "michaelpj",
+        "repo": "hackage-db",
+        "rev": "83f819cb08742d3c86a83b407d45c1f6c1c7e299",
+        "type": "github"
+      }
+    },
+    "hackage-nix": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1794788972,
+        "narHash": "sha256-/SHtxTQ+hNVVf6D1dnyUWNUEXGlE4Ke/DVj27JU8bQY=",
+        "owner": "kronor-io",
+        "repo": "hackage.nix",
+        "rev": "3b9467aba1d4f7b89b94c3e713111bb0d47be397",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kronor-io",
+        "repo": "hackage.nix",
+        "type": "github"
+      }
+    },
+    "haskell-nix": {
+      "inputs": {
+        "flake-compat": "flake-compat",
+        "hackage": [
+          "hackage-nix"
+        ],
+        "hackage-db": "hackage-db",
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "nixpkgs-2605": "nixpkgs-2605"
+      },
+      "locked": {
+        "lastModified": 1785745985,
+        "narHash": "sha256-yGu7ZWmHW+HAuk85Og7wwemqwkQYIVrgR2xSFqbjUos=",
+        "owner": "kronor-io",
+        "repo": "haskell.nix",
+        "rev": "d535b1ad950d14410a9151fc23aa76927a6a82a1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kronor-io",
+        "ref": "nixpkgs-ghc-601a4d19",
+        "repo": "haskell.nix",
+        "type": "github"
+      }
+    },
+    "kronor-haskell-packages": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1789064140,
+        "narHash": "sha256-YMj8azB4kSFDSK7QkF96qjZt9gu540nUuCX05IOGRfs=",
+        "owner": "kronor-io",
+        "repo": "kronor-haskell-packages",
+        "rev": "195c7a047ede6e28504eb6676a68ce7bcef8bb3e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "kronor-io",
+        "ref": "repo",
+        "repo": "kronor-haskell-packages",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1791353474,
+        "narHash": "sha256-v72qr4LsSz61tQki/41nHKZKPY6NSeZavtGlAInOCng=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "2efa67fd26b6df417c33e4603185c701f260dd83",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "release-26.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs-2605": {
+      "locked": {
+        "lastModified": 1784753046,
+        "narHash": "sha256-SMBjyNAg+N3ZcZOFrHc9XgHTt7d/l1Cuo/qKj5AzYe0=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "04c83a648c9a5dfa2840375c13815655b5393480",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "ref": "release-26.05",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "hackage-nix": "hackage-nix",
+        "haskell-nix": "haskell-nix",
+        "kronor-haskell-packages": "kronor-haskell-packages",
+        "nixpkgs": "nixpkgs"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}

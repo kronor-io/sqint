@@ -1,0 +1,33 @@
+packages: .
+
+optimization: False
+
+-- sqitch-plan reads sqitch.plan. It is not on Hackage yet; tag is the commit,
+-- and --sha256 is what haskell.nix checks it against (nix-prefetch-git
+-- --quiet --url https://github.com/kronor-io/sqitch-plan --rev <commit>).
+source-repository-package
+  type:     git
+  location: https://github.com/kronor-io/sqitch-plan
+  tag:      6b73832c208620f79c3346cdb50d80595f67a884
+  --sha256: 0gamsz2zjcrs17lmy3dv9n41bw1a01kwy4pncaf255113sckb2fq
+
+-- Kronor's package repository, for its pg-query fork, which adds the PL/pgSQL
+-- parser sqint reads function bodies with.
+repository github-kronor-haskell-packages
+  url: https://kronor-io.github.io/kronor-haskell-packages
+  secure: True
+  root-keys:
+    64307ca6c1cee780dd01e5e11193ba606b21fe1dd6a9102b838daff0c747eded
+    85a0bbddb3afe87449114e7b0622c9c80bd9164b5228dbc7db9fe66f3043f540
+    f344d0824b70101babfdea1e470b7388f6b8fc51b41186a627e98c71068a838c
+
+constraints:
+  pg-query == 0.0.1.1.0.*,
+  hasql == 2.0.1.0,
+  pqi == 1.1.0.1,
+  pqi-ffi == 1.0.1.0
+
+package postgresql-libpq
+  flags: +use-pkg-config
+
+index-state: hackage.haskell.org 2026-10-26T00:00:00Z

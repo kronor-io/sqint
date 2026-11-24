@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# sqint linked statically against musl, for the tarballs a version tag attaches
+# to its GitHub release (.github/workflows/ci.yml): one file that runs on any
+# Linux distribution, for the architecture this runs on.
+#
+#   scripts/build-static     writes dist-static/sqint-<arch>-linux.tar.xz
+#
+# It builds in Alpine, with the GHC of the ghc-musl image, since nixpkgs and
+# haskell.nix would compile a musl GHC first. Outside that image it runs itself
+# in it with docker. cabal's store and build directory stay in dist-static/, so
+# a later run, or CI's cache of that folder, reuses them.
+#
+# The tarball holds bin/sqint and its completion scripts under share/, so
+# unpacking it into ~/.local or /usr/local installs both.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+# ghc-musl 9.12.4, the GHC the flake builds sqint with.
+image=docker.io/benz0li/ghc-musl:9.12.4@sha256:e5b180fb35e3520296e86efc3aafc2859821afb1be02ef55a7add7fb893606e5
+
+if [ ! -e /etc/alpine-release ]; then
+    exec docker run --rm -v "$PWD:/src" -w /src "$image" scripts/build-static
+fi
+
+out=dist-static
+export CABAL_DIR="$PWD/$out/cabal"
+
+# The image runs as root; leave the files to whoever owns the checkout, also
+# when the build fails.
+mkdir -p "$out"
+trap 'chown -R "$(stat -c %u:%g .)" "$out"' EXIT
+
+# libpq.a and what it links: OpenSSL, as libpq.pc's static libraries name.
+apk add --no-cache libpq-dev openssl-libs-static binutils tar xz curl make
+
+# libpg_query 16, which pg-query was generated against (flake.nix), as
+# a static library. Alpine packages none, so it is built from the release.
+libpg_query_version=16-5.2.0
+libpg_query_sha256=92bbc9a628655df3de86db51de97446d8ed18b5d23b17039809364d5bc6a4a38
+libpg_query="$out/libpg_query-$libpg_query_version"
+if [ ! -e "$libpg_query/libpg_query.a" ]; then
+    rm -rf "$libpg_query"
+    mkdir -p "$libpg_query"
+    curl -fsSL -o "$libpg_query.tar.gz" \
+        "https://github.com/pganalyze/libpg_query/archive/refs/tags/$libpg_query_version.tar.gz"
+    echo "$libpg_query_sha256  $libpg_query.tar.gz" | sha256sum -c -
+    tar -xzf "$libpg_query.tar.gz" -C "$libpg_query" --strip-components=1
+    make -C "$libpg_query" -j"$(nproc)" build
+fi
+# libpg_query carries its own copy of some of PostgreSQL's common code, which
+# libpq.a's libpgcommon and libpgport define too, so the static link would see
+# each twice. Renaming them in libpg_query.a keeps each library on its own copy.
+mkdir -p /usr/local/lib /usr/local/include
+defined() { nm -g --defined-only "$@" 2>/dev/null | awk 'NF == 3 { print $3 }' | sort -u; }
+comm -12 \
+    <(defined "$libpg_query/libpg_query.a") \
+    <(defined /usr/lib/libpq.a /usr/lib/libpgcommon_shlib.a /usr/lib/libpgport_shlib.a) |
+    awk '{ print $1, "sqint_" $1 }' > "$out/libpg_query.redefine"
+objcopy --redefine-syms="$out/libpg_query.redefine" \
+    "$libpg_query/libpg_query.a" /usr/local/lib/libpg_query.a
+cp "$libpg_query/pg_query.h" /usr/local/include/pg_query.h
+
+# postgresql-libpq records the libraries pkg-config gives it, and the final link
+# names them right after -lpq. Plain pkg-config gives -lpq alone; libpq.a also
+# needs libpq.pc's Libs.private. Those name libpgcommon and libpgport, but libpq
+# is built against their _shlib variants, which alone define what it uses.
+cat > /usr/local/bin/pkg-config-static <<'WRAPPER'
+#!/bin/bash
+set -o pipefail
+pkg-config --static "$@" | sed -e 's/-lpgcommon\b/-lpgcommon_shlib/' -e 's/-lpgport\b/-lpgport_shlib/'
+WRAPPER
+chmod +x /usr/local/bin/pkg-config-static
+
+cabal update --builddir "$out/build"
+cabal build exe:sqint \
+    --builddir "$out/build" \
+    --enable-optimization \
+    --enable-executable-static \
+    --extra-lib-dirs=/usr/local/lib \
+    --extra-include-dirs=/usr/local/include \
+    --with-pkg-config=pkg-config-static
+
+stage="$out/stage"
+rm -rf "$stage"
+mkdir -p "$stage/bin" \
+    "$stage/share/bash-completion/completions" \
+    "$stage/share/zsh/site-functions" \
+    "$stage/share/fish/vendor_completions.d"
+cp "$(cabal list-bin exe:sqint --builddir "$out/build" --enable-optimization)" "$stage/bin/sqint"
+strip "$stage/bin/sqint"
+
+# A static binary has no interpreter or shared libraries to ask for; anything
+# else would only run where they are installed.
+if readelf -l "$stage/bin/sqint" | grep -q INTERP; then
+    echo "scripts/build-static: $stage/bin/sqint is not static" >&2
+    exit 1
+fi
+
+# opt-env-conf writes the absolute path it is given into each script, for the
+# script to run. The tarball can be unpacked anywhere, so the scripts run sqint
+# from PATH instead.
+completion() {
+    local binary="$PWD/$stage/bin/sqint"
+    "$binary" "--$1-completion-script" "$binary" | sed "s|$binary|sqint|g" > "$stage/share/$2"
+}
+completion bash bash-completion/completions/sqint
+completion zsh zsh/site-functions/_sqint
+completion fish fish/vendor_completions.d/sqint.fish
+
+tarball="$out/sqint-$(uname -m)-linux.tar.xz"
+tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@1 \
+    -cJf "$tarball" -C "$stage" bin share
+
+echo "$tarball"
