@@ -27,6 +27,8 @@ sqint has two passes:
 - **The static pass** reads only the SQL. It parses each statement with PostgreSQL's own parser ([libpg_query](https://github.com/pganalyze/libpg_query)), including the bodies of PL/pgSQL functions, so it needs no database and is fast enough for a pre-commit hook.
 - **The dynamic pass** runs when you give it a database (`--with-postgres`) and the last change already deployed there (`--baseline-change`). It deploys every change after that one in plan order and, before each, runs its statements in a transaction it rolls back while a second connection reads `pg_locks`. It reports the locks actually taken and table rewrites, asks the planner whether a cast really costs an index, and reports SQL functions a change leaves broken. Meant for CI.
 
+sqint is one of a set of tools for keeping a PostgreSQL schema in sqitch, with [sqiff](https://github.com/kronor-io/sqiff), [create-migration](https://github.com/kronor-io/sqitch-with-templates) and [psql-retry](https://github.com/kronor-io/psql-retry). [sqitchcraft](https://kronor-io.github.io/sqitchcraft/) shows how they fit together: the repository layout they assume, one change from an edited file to a deploy, and instructions for coding agents.
+
 ## Contents
 
 1. [Install](#install)
