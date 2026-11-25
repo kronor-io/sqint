@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE NoFieldSelectors #-}
 
 -- | The dynamic pass: deploy each statement and observe its locks.
@@ -27,6 +28,7 @@
 module Sqint.Deploy (
     inspectFile,
     brokenSqlFunctions,
+    deployedChangeCount,
 
     -- * Internals exposed for the test-suite
     lockFindings,
@@ -38,6 +40,7 @@ module Sqint.Deploy (
 import Data.ByteString.Char8 qualified as BS8
 import Data.Map.Strict qualified as Map
 import Data.Set qualified as Set
+import Data.String.Interpolate (i)
 import Data.Text qualified as T
 import Data.Text.IO qualified as Text.IO
 import Hasql.Connection (Connection)
@@ -547,6 +550,32 @@ brokenSqlFunctions settings =
                 pure (decodeUtf8Lenient signature, decodeUtf8Lenient err)
             rollback pq
             pure (Map.fromList broken)
+
+
+-- | How many changes of the project the sqitch registry records as deployed
+-- on the database. Sqitch deploys in plan order and a revert removes the
+-- row, so this is how far into the plan the database is, counting each
+-- occurrence of a reworked change.
+deployedChangeCount ::
+    DeploySettings ->
+    -- | The registry schema: sqitch's @engine.pg.registry@, @sqitch@ by default.
+    Text ->
+    -- | The plan's @%project@.
+    Text ->
+    IO Int
+deployedChangeCount settings registry project =
+    withConnection settings \conn ->
+        withPqConnection conn \pq -> do
+            result <-
+                execTuplesOrThrow
+                    "deployedChangeCount"
+                    pq
+                    (encodeUtf8 [i|select count(*) from #{quoteIdent registry}.changes where project = #{quoteLiteral project}|])
+            count <- getCellOrThrow "deployedChangeCount" result 0 0
+            maybe (throwIO (DeployQueryError ("deployedChangeCount: not a number: " <> decodeUtf8Lenient count))) pure (readMaybe (BS8.unpack count))
+  where
+    quoteIdent name = let escaped = T.replace "\"" "\"\"" name in [i|"#{escaped}"|] :: Text
+    quoteLiteral value = let escaped = T.replace "'" "''" value in [i|'#{escaped}'|] :: Text
 
 
 -- | A temporary function that re-creates every SQL function from its own

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+* The dynamic pass handles reworked changes. A baseline whose name the branch
+  reworks again is placed at the occurrence the database has deployed up to,
+  read from the sqitch registry; before, it resolved to the branch's own
+  occurrence and the pass checked nothing, without saying so. When the
+  registry cannot be read it reports the new `setup/baseline-ambiguous`.
+* A change reworked more than once after the baseline is deployed as
+  `change@tag` and observed from its snapshot script; before, the pass
+  stopped with sqitch's "is ambiguous" error.
+
 ## 0.1.0.2
 
 * Accept string-interpolate 0.3.4, which sqint builds with; 0.1.0.1 asked

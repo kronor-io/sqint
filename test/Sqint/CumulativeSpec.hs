@@ -6,7 +6,7 @@ import Data.Map.Strict qualified as Map
 import Data.String.Interpolate (i)
 import Data.Text qualified as T
 import RIO
-import Sqint.Cumulative (BrokenFunction (..), FunctionCheck (..), brokenFunctionFinding, firstStatementLine, newChangesAfter, recordCheck, trackBrokenFunctions)
+import Sqint.Cumulative (BaselineProblem (..), BrokenFunction (..), FunctionCheck (..), PendingChange (..), brokenFunctionFinding, firstStatementLine, newChangesAfter, recordCheck, trackBrokenFunctions)
 import Sqint.Diagnostic (Finding (..), Severity (..), SourceRange (..))
 import Sqint.Rule (renderRule)
 import Sqitch.Plan qualified as Plan
@@ -23,7 +23,22 @@ plan body =
 
 changeNamesAfter :: Text -> Text -> Maybe [Text]
 changeNamesAfter baseline body =
-    map (.name) <$> newChangesAfter (plan body) baseline
+    either (const Nothing) (Just . map (.name)) (newChangesAfter (plan body) baseline Nothing)
+
+
+-- | What the pass deploys after the baseline, given how many changes the
+-- database has deployed: each change's sqitch target and script.
+pendingAfter :: Text -> Maybe Int -> Text -> Either BaselineProblem [(Text, FilePath)]
+pendingAfter baseline deployed body =
+    map (\c -> (c.target, c.script)) <$> newChangesAfter (plan body) baseline deployed
+
+
+tag :: Text -> Text
+tag name = [i|@#{name} 2024-01-01T00:00:00Z a <a@x> \# tag|] <> "\n"
+
+
+rework :: Text -> Text -> Text
+rework name at = [i|#{name} [#{name}@#{at}] 2024-01-02T00:00:00Z a <a@x> \# reworked #{name}|] <> "\n"
 
 
 line :: Text -> Text
@@ -31,7 +46,7 @@ line name = [i|#{name} 2024-01-01T00:00:00Z a <a@x> \# #{name}|] <> "\n"
 
 
 tests :: TestTree
-tests = testGroup "Cumulative" [newChangesAfterTests, brokenFunctionTests]
+tests = testGroup "Cumulative" [newChangesAfterTests, reworkedChangeTests, brokenFunctionTests]
 
 
 newChangesAfterTests :: TestTree
@@ -61,6 +76,42 @@ newChangesAfterTests =
                     <> line "z"
                 )
             @?= Just ["t", "z"]
+        ]
+
+
+reworkedChangeTests :: TestTree
+reworkedChangeTests =
+    testGroup
+        "Cumulative.newChangesAfter, reworked changes"
+        [ testCase "a change reworked again later deploys from its snapshot, by tag"
+            $ pendingAfter
+                "a"
+                Nothing
+                (line "a" <> line "t" <> tag "v1" <> rework "t" "v1" <> tag "v2" <> rework "t" "v2")
+            @?= Right
+                [ ("t@v1", "deploy/t@v1.sql")
+                , ("t@v2", "deploy/t@v2.sql")
+                , ("t@HEAD", "deploy/t.sql")
+                ]
+        , testCase "a change that occurs once is deployed by its bare name"
+            $ pendingAfter "a" Nothing (line "a" <> line "b")
+            @?= Right [("b", "deploy/b.sql")]
+        , testCase "a reworked baseline is placed where the database has deployed to"
+            $
+            -- The target branch ends with the second occurrence of `t`; this
+            -- branch reworks it a third time. The database has deployed the
+            -- target branch: three changes.
+            pendingAfter "t" (Just 3) (line "a" <> line "t" <> tag "v1" <> rework "t" "v1" <> tag "v2" <> rework "t" "v2")
+            @?= Right [("t@HEAD", "deploy/t.sql")]
+        , testCase "a reworked baseline the database cannot place is ambiguous, not guessed"
+            $ pendingAfter "t" Nothing (line "a" <> line "t" <> tag "v1" <> rework "t" "v1")
+            @?= Left (BaselineAmbiguous [5, 7])
+        , testCase "a deployed count that lands on another change does not place the baseline"
+            $ pendingAfter "t" (Just 1) (line "a" <> line "t" <> tag "v1" <> rework "t" "v1")
+            @?= Left (BaselineAmbiguous [5, 7])
+        , testCase "a baseline that is not in the plan is missing"
+            $ pendingAfter "nope" (Just 1) (line "a")
+            @?= Left BaselineMissing
         ]
 
 
