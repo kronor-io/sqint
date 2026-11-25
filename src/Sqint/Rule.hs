@@ -51,6 +51,7 @@ data Rule
     | SetupUnparsableDomainFile
     | SetupUnparsablePlan
     | SetupBaselineMissing
+    | SetupBaselineAmbiguous
     deriving stock (Eq, Show)
 
 
@@ -79,6 +80,7 @@ renderRule = \case
     SetupUnparsableDomainFile -> "setup/unparsable-domain-file"
     SetupUnparsablePlan -> "setup/unparsable-plan"
     SetupBaselineMissing -> "setup/baseline-missing"
+    SetupBaselineAmbiguous -> "setup/baseline-ambiguous"
 
 
 -- | PostgreSQL's lock mode names (@ACCESS EXCLUSIVE@ and so on), in the

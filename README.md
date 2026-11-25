@@ -81,7 +81,7 @@ Give sqint the deploy scripts to check, usually the ones a branch adds or change
 sqint --database-root db $(git diff --name-only main -- db/deploy)
 ```
 
-That is the static pass. For the dynamic pass, deploy the target branch to a scratch database first, then run sqint on the branch under review from the directory holding `sqitch.conf`. sqint runs `sqitch deploy --to-change <change> --verify` for each new change, so give sqitch the same database through the `PG*` variables:
+That is the static pass. For the dynamic pass, deploy the target branch to a scratch database first, then run sqint on the branch under review from the directory holding `sqitch.conf`. sqint runs `sqitch deploy --to-change <change> --verify` for each new change, so give sqitch the same database through the `PG*` variables, or through `SQITCH_TARGET` when `sqitch.conf` names a default target with its own database (a database in the target's URI wins over `PGDATABASE`):
 
 ```bash
 git switch main
@@ -97,6 +97,8 @@ PGHOST=localhost PGUSER=postgres PGDATABASE=scratch \
 ```
 
 Every change after the baseline is deployed for real, one at a time, so use a database you can throw away.
+
+The baseline may be a reworked change, which is what a table changed with sqiff leaves at the end of the plan, and the branch may rework it again. Its name then occurs more than once, and sqint takes the occurrence the database has deployed up to, from the sqitch registry. If it cannot read the registry it reports `setup/baseline-ambiguous` and skips the dynamic pass rather than guess. A change reworked several times after the baseline is deployed by its tag-qualified name (`change@tag`), from its snapshot script.
 
 ## What it catches
 
@@ -389,6 +391,7 @@ With `--format json`, sqint prints one array of findings for tools:
 | `setup/unparsable-domain-file` | static | INFO | A deploy file sqint could not read for domains. |
 | `setup/unparsable-plan` | dynamic | INFO | A `sqitch.plan` sqint could not read. |
 | `setup/baseline-missing` | dynamic | INFO | A `--baseline-change` that is not in the plan. |
+| `setup/baseline-ambiguous` | dynamic | INFO | A reworked `--baseline-change` whose deployed occurrence the sqitch registry could not tell. |
 
 ## Limits
 

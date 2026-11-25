@@ -39,6 +39,8 @@ module Sqint.Cumulative (
 
     -- * Internals exposed for the test-suite
     newChangesAfter,
+    PendingChange (..),
+    BaselineProblem (..),
     BrokenFunction (..),
     FunctionCheck (..),
     recordCheck,
@@ -79,24 +81,113 @@ runCumulativeDeploy settings topDir planPath baseline = do
     planSrc <- readFileUtf8 planPath
     case Plan.parsePlan planSrc of
         Left err -> pure [planParseFinding planPath (Plan.renderParseError err)]
-        Right plan -> case newChangesAfter plan baseline of
-            Nothing -> pure [baselineMissingFinding planPath baseline]
-            Just changes -> observeAndDeploy settings topDir planPath changes
+        Right plan -> do
+            deployed <- deployedOccurrence settings plan baseline
+            case newChangesAfter plan baseline deployed of
+                Left BaselineMissing -> pure [baselineMissingFinding planPath baseline]
+                Left (BaselineAmbiguous occurrenceLines) -> pure [baselineAmbiguousFinding planPath baseline occurrenceLines]
+                Right changes -> observeAndDeploy settings topDir planPath changes
+
+
+-- | A change the pass deploys: what sqitch calls it, and the script that
+-- holds it.
+data PendingChange = PendingChange
+    { name :: Text
+    , target :: Text
+    -- ^ The @--to-change@ specifier. A reworked change shares its name
+    -- with its other occurrences, so a bare name is ambiguous to sqitch:
+    -- an occurrence reworked again later is @name\@tag@, for the tag its
+    -- next occurrence was reworked at; the latest occurrence is
+    -- @name\@HEAD@; a change that occurs once is its bare name.
+    , script :: FilePath
+    -- ^ Relative to the sqitch top directory. An occurrence reworked again
+    -- later is deployed from its snapshot, @deploy/name\@tag.sql@.
+    }
+    deriving stock (Eq, Show)
+
+
+-- | Why the baseline change could not be placed in the plan.
+data BaselineProblem
+    = -- | The plan has no change of that name.
+      BaselineMissing
+    | -- | The name occurs more than once and the database did not say
+      -- which occurrence it has reached. The lines of each occurrence.
+      BaselineAmbiguous [Int]
+    deriving stock (Eq, Show)
 
 
 -- | The changes that come strictly after the @baseline@ change, in
--- plan (deploy) order. 'Nothing' when the baseline change is not in the
--- plan at all — a configuration error the caller surfaces rather than
--- silently treating every change as new (which would re-deploy the
--- whole history).
-newChangesAfter :: Plan.Plan -> Text -> Maybe [Plan.Change]
-newChangesAfter plan baseline = map (.value) <$> Plan.changesAfter baseline plan
+-- plan (deploy) order.
+--
+-- When the baseline is a reworked change, its name occurs more than once,
+-- and the branch may have reworked it yet again after the baseline. The
+-- database decides: the baseline is the occurrence at the position the
+-- database has deployed up to (the third argument, a count of deployed
+-- changes). Without that, an ambiguous baseline is a problem the caller
+-- reports, never a guess: guessing the last occurrence would leave
+-- nothing to check, and an earlier one would redeploy history.
+newChangesAfter :: Plan.Plan -> Text -> Maybe Int -> Either BaselineProblem [PendingChange]
+newChangesAfter plan baseline deployed = do
+    base <- resolveBaseline plan baseline deployed
+    pure (map (pendingChange plan) (Plan.changesAfterLine base.line plan))
+
+
+resolveBaseline :: Plan.Plan -> Text -> Maybe Int -> Either BaselineProblem (Plan.Located Plan.Change)
+resolveBaseline plan baseline deployed = case Plan.occurrences baseline plan of
+    [] -> Left BaselineMissing
+    [only] -> Right only
+    several -> case deployedHead of
+        Just c | c.line `elem` map (.line) several -> Right c
+        _ -> Left (BaselineAmbiguous (map (.line) several))
+  where
+    deployedHead = do
+        n <- deployed
+        guard (n >= 1)
+        listToMaybe (drop (n - 1) (Plan.changes plan))
+
+
+-- | How sqitch names a change at this position, and where its script is.
+pendingChange :: Plan.Plan -> Plan.Located Plan.Change -> PendingChange
+pendingChange plan c =
+    let name = c.value.name
+        later = filter (\o -> o.line > c.line) (Plan.occurrences name plan)
+        snapshot = case later of
+            next : _ -> Plan.reworkTag next.value <|> listToMaybe [t.value.name | t <- Plan.tagsAfterLine c.line plan]
+            [] -> Nothing
+        current = "deploy" </> T.unpack name <> ".sql"
+     in case snapshot of
+            Just tag -> PendingChange{name, target = name <> "@" <> tag, script = "deploy" </> T.unpack (name <> "@" <> tag) <> ".sql"}
+            Nothing
+                | Plan.isReworked name plan -> PendingChange{name, target = name <> "@HEAD", script = current}
+                | otherwise -> PendingChange{name, target = name, script = current}
+
+
+-- | How many changes the database has deployed, when the baseline's name
+-- is ambiguous and that count is what places it. 'Nothing' when the name
+-- is not ambiguous, or the count could not be read.
+deployedOccurrence :: DeploySettings -> Plan.Plan -> Text -> IO (Maybe Int)
+deployedOccurrence settings plan baseline
+    | length (Plan.occurrences baseline plan) < 2 = pure Nothing
+    | otherwise = case Plan.projectName plan of
+        Nothing -> pure Nothing
+        Just project -> do
+            registry <- sqitchRegistry
+            either (const Nothing) Just <$> tryAny (Deploy.deployedChangeCount settings registry project)
+
+
+-- | The registry schema sqitch uses: @engine.pg.registry@, or @sqitch@.
+sqitchRegistry :: IO Text
+sqitchRegistry = do
+    (code, out, _err) <- readCreateProcessWithExitCode (proc "sqitch" ["config", "--get", "engine.pg.registry"]) ""
+    pure case code of
+        ExitSuccess | not (T.null (T.strip (T.pack out))) -> T.strip (T.pack out)
+        _ -> "sqitch"
 
 
 -- | The observe-then-deploy loop. Stops at the first deploy failure
 -- (the schema would be desynced past that point, so later observations
 -- would be meaningless) and reports it.
-observeAndDeploy :: DeploySettings -> FilePath -> FilePath -> [Plan.Change] -> IO [Finding]
+observeAndDeploy :: DeploySettings -> FilePath -> FilePath -> [PendingChange] -> IO [Finding]
 observeAndDeploy settings topDir planPath changes = do
     baseline <- tryAny (Deploy.brokenSqlFunctions settings)
     case baseline of
@@ -108,13 +199,13 @@ observeAndDeploy settings topDir planPath changes = do
     go functions acc [] = pure (reverse acc <> brokenFindings functions)
     go functions acc (change : rest) = do
         let name = change.name
-            script = topDir </> "deploy" </> T.unpack name <> ".sql"
+            script = topDir </> change.script
         exists <- doesFileExist script
         observed <-
             if exists
                 then Deploy.inspectFile settings script
                 else pure []
-        deployed <- sqitchDeployTo (deployTarget change)
+        deployed <- sqitchDeployTo change.target
         case deployed of
             Right () -> do
                 (functions', skipped) <- checkFunctions functions name script
@@ -239,17 +330,6 @@ firstStatementLine src =
         [] -> 1
 
 
--- | The @--to-change@ specifier for a change. A reworked change shares
--- its name with the earlier instance already on the database, so a bare
--- name is ambiguous to sqitch ("matches multiple changes"); @\@HEAD@
--- pins it to the latest instance — the rework we are deploying. Plain
--- (non-reworked) changes have unique names, so no qualifier is needed.
-deployTarget :: Plan.Change -> Text
-deployTarget change =
-    let name = change.name
-     in if isJust (Plan.reworkTag change) then name <> "@HEAD" else name
-
-
 -- | @sqitch deploy --to-change <target> --verify@ from the working
 -- directory, where @sqitch.conf@ is. Connection parameters come from the
 -- inherited @PG*@ environment, which the caller sets to the same database
@@ -296,6 +376,16 @@ baselineMissingFinding path baseline =
         SetupBaselineMissing
         "Baseline change not found in sqitch.plan"
         [i|The baseline change `#{baseline}` is not present in the plan, so the cumulative dynamic pass was skipped; static checks still applied.|]
+
+
+baselineAmbiguousFinding :: FilePath -> Text -> [Int] -> Finding
+baselineAmbiguousFinding path baseline occurrenceLines =
+    pointFinding
+        path
+        SeverityInfo
+        SetupBaselineAmbiguous
+        "Baseline change is reworked, and the database did not say which occurrence it is at"
+        [i|`#{baseline}` occurs #{length occurrenceLines} times in the plan (lines #{T.intercalate ", " (map tshow occurrenceLines)}), and the sqitch registry on the database could not be read to tell which occurrence is deployed, so the cumulative dynamic pass was skipped; static checks still applied. Deploy the target branch's plan into the database before running sqint.|]
 
 
 deployFailedFinding :: FilePath -> Text -> Text -> Finding
