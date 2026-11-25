@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.1.0
 
 * The dynamic pass handles reworked changes. A baseline whose name the branch
   reworks again is placed at the occurrence the database has deployed up to,
